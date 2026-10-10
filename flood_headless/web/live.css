@@ -1,0 +1,83 @@
+/* 실제 에이전트 연결판 추가 스타일 */
+.seg.clock{display:flex;align-items:center;gap:12px;padding:8px 12px;flex-wrap:wrap}
+.cbtn{border:0;background:var(--ink);color:var(--card);border-radius:10px;min-width:64px;height:36px;font-weight:600;cursor:pointer}
+.cbtn:disabled{background:var(--orange);cursor:wait}
+.cbox{display:flex;flex-direction:column;line-height:1.2;min-width:150px}
+.cbox b{font-family:var(--num);font-size:18px}
+.cbox small{color:var(--sub);font-size:11.5px;max-width:260px}
+#cSl{width:240px;accent-color:var(--blue)}
+.cs{font-size:12px;color:var(--sub);display:flex;align-items:center;gap:6px}
+.cs select{padding:3px 6px}
+.qf{display:flex;gap:8px;align-items:stretch}
+.qf textarea{flex:1;font:inherit;font-size:13px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;resize:vertical;background:var(--card);color:var(--ink)}
+.runs{display:flex;flex-direction:column;gap:16px}
+.run{display:flex;flex-direction:column;gap:10px;padding-bottom:16px;border-bottom:1px solid var(--line)}
+.trig.ask{background:var(--violet-soft);color:var(--violet)}
+.acts li.spin .what{color:var(--orange);animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.acts li.spin .what{animation:none}}
+
+/* 운영 화면 모드: 재생 조작은 숨기고(O 키로 표시), 실시간 운영처럼 시계와 수신 상태만 보인다 */
+.seg.clock{gap:16px}
+.ops{display:flex;align-items:center;gap:12px}
+.ops .cbox b{font-size:20px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--green);box-shadow:0 0 0 0 var(--green);animation:live 1.6s infinite}
+.dot.busy{background:var(--orange)}
+@keyframes live{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--green) 60%,transparent)}100%{box-shadow:0 0 0 10px transparent}}
+#oBusy{background:var(--orange-soft);color:var(--orange);animation:blink 1.2s infinite}
+.ctl{display:none;align-items:center;gap:12px;flex-wrap:wrap;border-left:1px solid var(--line);padding-left:16px}
+body.op .ctl{display:flex}
+@media (prefers-reduced-motion:reduce){.dot,#oBusy{animation:none}}
+
+.head .seg.clock{flex:0 1 auto;padding:12px 20px}
+.ops{gap:16px;flex-wrap:nowrap}
+.onow{font-family:var(--num);font-size:22px;font-weight:600;white-space:nowrap;letter-spacing:-.01em}
+.osep{width:1px;align-self:stretch;background:var(--line)}
+.osub{display:flex;flex-direction:column;gap:3px}
+.osub small{font-size:11px;color:var(--faint)}
+#oSub{display:flex;gap:6px;flex-wrap:nowrap}
+#oSub span{font-size:12px;color:var(--sub);background:var(--soft);border-radius:999px;padding:2px 9px;white-space:nowrap;font-family:var(--num)}
+@media (max-width:1400px){#oSub{flex-wrap:wrap}}
+
+/* 보기 전용(다른 사람): 질문창·조작·승인 버튼 숨김 */
+body.viewonly .ctl,body.viewonly .prop .act{display:none!important}
+
+/* 에이전트 일지(오른쪽) 넓게 */
+.app{grid-template-columns:200px minmax(0,1fr) 500px}
+@media (max-width:1600px){.app{grid-template-columns:68px minmax(0,1fr) 440px}aside{padding-inline:10px}aside .logo span,aside a span{display:none}aside a{justify-content:center;padding:10px}aside .logo{justify-content:center}}
+@media (max-width:1100px){.app{grid-template-columns:minmax(0,1fr)}}
+.rail{padding-inline:26px}
+.acts li{grid-template-columns:48px minmax(0,1fr);font-size:13px}
+
+/* 숨김 속성 우선 (아티팩트 기본 스타일에 있던 규칙) */
+[hidden]{display:none!important}
+
+.ktoast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(10px);background:var(--ink);color:var(--card);padding:10px 16px;border-radius:12px;font-size:13px;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;z-index:50}
+.ktoast.on{opacity:.94;transform:translateX(-50%) translateY(0)}
+
+/* 넓은 화면: 강우·수위 그래프와 수위계 지도를 나란히 두어 한 화면에 */
+#v-board>.srcs{display:none}
+@media (min-width:1700px){
+  #v-board{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:20px;align-items:stretch}
+  #v-board>.stats,#v-board>section:last-child{grid-column:1/-1}
+  #v-board .areas{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:14px}
+  #v-board .areas .list li{padding:7px 2px}
+  #v-board .areas .list li:nth-child(n+5){display:none}
+  #v-board .areas .pending{font-size:12px;padding:9px 11px}
+}
+
+/* 자동 시연 커서 */
+#tourCur{position:fixed;left:0;top:0;z-index:9999;pointer-events:none;display:none;will-change:transform;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.3))}
+#tourCur svg{display:block}
+.list li.fh{background:var(--soft)}
+body.touring,body.touring *{cursor:none!important}
+/* 녹화용 (?rec): 영상 압축·재생기에서도 카드 경계가 남도록 대비를 올림 */
+body.rec{--canvas:#e9edf5;--soft:#edf0f6;--line:#dde2ec;--shadow:0 1px 2px rgba(27,35,64,.08),0 6px 18px rgba(27,35,64,.08)}
+body.rec .card,body.rec .rail,body.rec aside{outline:1px solid #d9dee9;outline-offset:-1px}
+/* 자동 시연 형광펜 */
+span.tourMark{background-image:linear-gradient(transparent 58%,rgba(255,206,40,.6) 58%);background-repeat:no-repeat;background-size:0% 100%;
+  -webkit-box-decoration-break:clone;box-decoration-break:clone;transition:background-size 1.2s ease-out}
+span.tourMark.on{background-size:100% 100%}
+/* 검증: 범례·지도 설명 글자 */
+#vLegend{font-size:14px}
+#vmapMeta{font-size:14px}

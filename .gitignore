@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.vscode/
+.idea/
+.DS_Store
+*.log
+.claude/
+flood_headless/outputs/
+flood_headless/cache/
+flood_headless/web/state.json
+flood_headless/web/*.mp4
+flood_headless/web/.server_*.pid
+flood_headless/dashboard/briefings_old/

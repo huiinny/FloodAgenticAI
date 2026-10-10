@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# 에이전트가 부르는 유일한 명령. floodagent 환경의 python 으로 flood_tool.py 실행.
+#   flood_tool observed --date YYYY-MM-DD
+#   flood_tool forecast --date YYYY-MM-DD
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+PY="${FLOOD_PY:-$HOME/miniforge3/envs/floodagent/bin/python}"
+exec "$PY" -W ignore "$HERE/flood_tool.py" "$@"

@@ -1,0 +1,733 @@
+<title>도림천 침수 상황판</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: white sidebar + soft canvas; one time point per screen. Stat row; [rain panel / sewer panel, shared time axis] | [3h gauge + event log]; [gauge map + list] | [briefing]; sensor detail (inverted hyetograph + level) */
+:root{
+  --canvas:#f4f6fb; --card:#ffffff; --soft:#f3f5fa; --line:#eceff5;
+  --ink:#1b2340; --sub:#6b7390; --faint:#a7adc2;
+  --blue:#3b5bfd; --blue-soft:#e9edff; --sky:#a9c4ff; --teal:#11a3a3;
+  --violet:#8a63f0; --violet-soft:#efe9fe;
+  --orange:#ff7a45; --orange-soft:#fff0e9;
+  --amber:#f2a516; --amber-soft:#fff6e2; --green:#22a873; --green-soft:#e6f7f0; --red:#ef4a5f; --red-soft:#fde9ec;
+  --risk0:#dfe5f3; --s1:#3b5bfd; --s2:#ff7a45; --s3:#11a3a3; --s4:#8a63f0;
+  --shadow:0 1px 2px rgba(27,35,64,.04),0 8px 24px rgba(27,35,64,.05); --terrain-op:.95; --gu-wash:.18;
+  --ui:"Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --num:"Outfit","Noto Sans KR",sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --canvas:#11141d; --card:#181c28; --soft:#1f2433; --line:#262c3c;
+  --ink:#eef0f7; --sub:#a1a8bf; --faint:#666e86;
+  --blue:#7590ff; --blue-soft:#232b4d; --sky:#4b5f9e; --teal:#3cc7c7;
+  --violet:#ad8fff; --violet-soft:#2b2447;
+  --orange:#ff9466; --orange-soft:#3a2419;
+  --amber:#f5bb44; --amber-soft:#352a12; --green:#45c993; --green-soft:#16302a; --red:#ff6f80; --red-soft:#3a1a21;
+  --s1:#7590ff; --s2:#ff9466; --s3:#3cc7c7; --s4:#ad8fff;
+  --shadow:none; --terrain-op:.38; --gu-wash:.1; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --canvas:#11141d; --card:#181c28; --soft:#1f2433; --line:#262c3c;
+  --ink:#eef0f7; --sub:#a1a8bf; --faint:#666e86;
+  --blue:#7590ff; --blue-soft:#232b4d; --sky:#4b5f9e; --teal:#3cc7c7;
+  --violet:#ad8fff; --violet-soft:#2b2447;
+  --orange:#ff9466; --orange-soft:#3a2419;
+  --amber:#f5bb44; --amber-soft:#352a12; --green:#45c993; --green-soft:#16302a; --red:#ff6f80; --red-soft:#3a1a21;
+  --s1:#7590ff; --s2:#ff9466; --s3:#3cc7c7; --s4:#ad8fff;
+  --shadow:none; --terrain-op:.38; --gu-wash:.1; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--canvas);color:var(--ink);font-family:var(--ui);font-size:14px;line-height:1.5}
+button,select{font:inherit;color:inherit}
+html,body{height:100%}
+.app{display:grid;grid-template-columns:220px minmax(0,1fr) 340px;height:100%;overflow:hidden}
+aside,main{height:100%;overflow-y:auto}
+.rail{height:100%;overflow-y:auto;background:var(--card);border-left:1px solid var(--line);padding-block:28px;padding-inline:22px;display:flex;flex-direction:column;gap:22px}
+.rblock{display:flex;flex-direction:column;gap:12px}
+.rblock+.rblock{border-top:1px solid var(--line);padding-top:22px}
+.rail .log{max-height:none}
+.ph{display:flex;justify-content:flex-start;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
+.ph .panel-label{margin:0}
+.only{display:flex;gap:4px;background:var(--soft);border-radius:10px;padding:3px;flex-wrap:wrap}
+.only button{border:0;background:transparent;border-radius:8px;padding:3px 10px;font-size:12px;color:var(--sub);cursor:pointer;display:flex;align-items:center;gap:6px}
+.only button i{width:8px;height:8px;border-radius:50%}
+.only button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(27,35,64,.08)}
+.only button:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+.stat .row{display:flex;align-items:center;gap:12px}
+.vt{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums;min-width:760px}
+.vt th{color:var(--sub);font-weight:500;text-align:left;font-size:12px;padding:8px;border-bottom:1px solid var(--line);white-space:nowrap}
+.vt td{padding:8px;border-bottom:1px solid var(--line);white-space:nowrap}
+.vt .n{text-align:right;font-family:var(--num)}
+.vt .sub{color:var(--sub)}
+.acts li{transition:opacity .25s,transform .25s}
+.acts li.pend,.prop.pend{opacity:0;transform:translateY(4px)}
+.prop{transition:opacity .3s}
+.trig{background:var(--blue-soft);color:var(--blue);border-radius:12px;padding:9px 12px;font-size:12.5px;font-weight:500;display:flex;gap:8px;align-items:flex-start}
+.trig b{white-space:nowrap}
+.rail .ch{flex-wrap:nowrap;align-items:baseline}
+.acts{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0;counter-reset:a}
+.acts li{display:grid;grid-template-columns:44px minmax(0,1fr);gap:8px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:12.5px}
+.acts .who{font-size:11px;font-weight:600;border-radius:6px;padding:2px 0;text-align:center;align-self:start}
+.w-총괄{background:var(--soft);color:var(--ink)} .w-관측{background:var(--green-soft);color:var(--green)} .w-예측{background:var(--violet-soft);color:var(--violet)}
+.acts .what{font-weight:600}.acts .res{color:var(--sub);display:block;margin-top:1px}
+.acts li.sub{padding-left:14px}
+.prop{border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;font-size:13px}
+.prop .lv{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.prop .lv b{font-size:18px}
+.prop h4{margin:0;font-size:12px;color:var(--sub);font-weight:500}
+.prop ul{margin:0;padding-left:16px;display:flex;flex-direction:column;gap:3px}
+.prop .sms{background:var(--soft);border-radius:10px;padding:8px 10px;font-size:12.5px}
+.prop .next{color:var(--sub);font-size:12px}
+details summary{list-style:none;display:flex;align-items:baseline;justify-content:space-between;cursor:pointer}
+details summary::-webkit-details-marker{display:none}
+details[open] summary .meta{visibility:hidden}
+details .md{margin-top:10px}
+.md{font-size:13px;line-height:1.6;color:var(--ink);display:flex;flex-direction:column;gap:6px}
+.md h3{font-size:13.5px;margin:10px 0 0;color:var(--ink)}
+.md h3.sep{border-top:1px solid var(--line);padding-top:12px;margin-top:14px;color:var(--blue)}
+.md p,.md li{margin:0;overflow-wrap:anywhere}.md p.q{color:var(--sub);font-size:12px}
+.md ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:3px}
+.md code{font-size:11.5px;background:var(--soft);border-radius:4px;padding:0 4px}
+.md .tw{overflow-x:auto}.md table{border-collapse:collapse;font-size:12px;width:100%}
+.md th,.md td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left;white-space:nowrap}
+.md th{color:var(--sub);font-weight:500}
+.view{display:flex;flex-direction:column;gap:20px;min-width:0}
+.dlegend{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--sub)}
+.dlegend i{display:inline-block;width:12px;height:3px;border-radius:2px;margin-right:6px;vertical-align:3px}
+.legend{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--sub)}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-2px}
+.player{display:flex;align-items:center;gap:12px}
+.player b{font-family:var(--num);font-size:20px;font-weight:600;min-width:64px}
+input[type=range]{width:100%;accent-color:var(--blue)}
+.rslide{display:flex;flex-direction:column;gap:2px}
+.rticks{position:relative;height:16px;margin-inline:8px;font-family:var(--num);font-size:11px;color:var(--faint)}
+.rticks span{position:absolute;transform:translateX(-50%);white-space:nowrap}
+.rticks span:first-child{transform:none}
+.rticks span:last-child{transform:translateX(-100%)}
+.player b small{font-size:12px;color:var(--sub);font-weight:500;margin-left:4px}
+.rstat{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--line);padding-block:6px}
+.rstat span{color:var(--sub);font-size:13px}
+.rstat b{font-family:var(--num);font-size:22px;font-weight:600}
+
+aside{background:var(--card);border-right:1px solid var(--line);padding-block:28px;padding-inline:20px;display:flex;flex-direction:column;gap:4px}
+.logo{display:flex;align-items:center;gap:10px;font-family:var(--num);font-weight:600;font-size:17px;margin-bottom:28px}
+aside a{display:flex;align-items:center;gap:12px;color:var(--sub);text-decoration:none;padding:10px 14px;border-radius:12px;font-weight:500}
+aside a svg{flex:none;stroke:currentColor}
+aside a.on{background:var(--blue-soft);color:var(--blue)}
+aside a:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+main{padding-block:28px 40px;padding-inline:32px;display:flex;flex-direction:column;gap:20px;min-width:0}
+.head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px}
+.head h1{margin:0;font-size:26px;font-weight:700;letter-spacing:-.01em}
+.asof{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-top:4px}
+.asof b{font-family:var(--num);font-size:15px;font-weight:600}
+.asof span{color:var(--sub);font-size:13px}
+.tag{font-size:11.5px;color:var(--sub);background:var(--soft);border-radius:999px;padding:2px 10px}
+.seg{display:flex;background:var(--card);border-radius:14px;padding:4px;box-shadow:var(--shadow);gap:2px;flex-wrap:wrap}
+.seg button{border:0;background:transparent;border-radius:10px;padding:7px 14px;cursor:pointer;display:flex;flex-direction:column;align-items:flex-start;line-height:1.25;color:var(--sub)}
+.seg button small{font-size:11px;color:var(--faint)}
+.seg button b{font-family:var(--num);font-weight:600;font-size:14px}
+.seg button.on{background:var(--ink);color:var(--card)}
+.seg button.on small{color:var(--card);opacity:.7}
+.seg button:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+.srcs{display:flex;gap:8px;flex-wrap:wrap}
+.src{display:flex;align-items:center;gap:7px;background:var(--card);border-radius:999px;padding:5px 12px;font-size:12.5px;box-shadow:var(--shadow);color:var(--sub)}
+.src i{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.src b{color:var(--ink);font-weight:500}
+.src.fc i{background:var(--violet)}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.stat{background:var(--card);border-radius:18px;padding:18px 20px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:4px;min-width:0}
+.stat .l{color:var(--sub);font-size:13px;display:flex;align-items:center;gap:7px}
+.stat .l i{width:8px;height:8px;border-radius:2px}
+.stat .v{font-family:var(--num);font-size:30px;font-weight:600;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.stat .v small{font-size:14px;color:var(--sub);font-weight:500;margin-left:4px}
+.stat .s{color:var(--sub);font-size:12.5px}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px}
+.card{background:var(--card);border-radius:18px;padding:22px 24px;box-shadow:var(--shadow);min-width:0;display:flex;flex-direction:column;gap:12px}
+.card h2{margin:0;font-size:16px;font-weight:600}
+.ch{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.meta{color:var(--sub);font-size:12.5px}
+.keys{display:flex;gap:14px;font-size:12.5px;color:var(--sub);flex-wrap:wrap;align-items:center}
+.keys i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:3px}
+.keys i.dash{background:repeating-linear-gradient(90deg,var(--violet) 0 4px,transparent 4px 7px)!important}
+.chartbox{overflow-x:auto;position:relative}
+.chartbox svg{display:block;min-width:560px;width:100%;height:auto}
+svg text{font-family:var(--num);font-size:11px;fill:var(--faint)}
+.panel-label{font-size:12.5px;font-weight:600;color:var(--sub);margin:6px 0 -6px}
+.hoverbox{position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 10px;font-size:12px;box-shadow:var(--shadow);min-width:150px}
+.hoverbox b{font-family:var(--num)}
+.hoverbox div{display:flex;justify-content:space-between;gap:12px}
+.hoverbox span{color:var(--sub)}
+.gauge{display:flex;align-items:center;gap:18px}
+.gauge .txt{display:flex;flex-direction:column;gap:2px}
+.gauge .txt b{font-size:13px}
+.gauge .txt span{font-size:12.5px;color:var(--sub)}
+.log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;max-height:430px;overflow:auto}
+.log li{display:grid;grid-template-columns:34px minmax(0,1fr);gap:12px;padding-bottom:16px;position:relative}
+.log li:not(:last-child)::before{content:"";position:absolute;left:16px;top:34px;bottom:2px;width:1px;background:var(--line)}
+.ic{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;border:1.5px solid currentColor;background:var(--card)}
+.ic svg{stroke:currentColor}
+.log .t{display:flex;justify-content:space-between;gap:8px;font-weight:600;font-size:13px}
+.log .t time{font-family:var(--num);font-weight:500;color:var(--faint);font-size:12px;white-space:nowrap}
+.log p{margin:2px 0 0;color:var(--sub);font-size:12.5px}
+.act{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:6px 12px;font-size:12.5px;cursor:pointer;font-weight:500}
+.btn.pri{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.areas{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:20px;align-items:start}
+canvas{width:100%;max-width:100%;height:auto;display:block;border-radius:14px;background:var(--soft)}
+.list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.list li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 4px;border-bottom:1px solid var(--line);cursor:pointer}
+.list li:hover{background:var(--soft)}
+.list .nm{font-weight:500}
+.list .nm small{display:block;color:var(--sub);font-weight:400;font-size:12px}
+.pill{font-size:12px;font-weight:600;border-radius:8px;padding:3px 10px;white-space:nowrap;font-family:var(--num)}
+.p-sev{background:var(--red-soft);color:var(--red)} .p-alert{background:var(--orange-soft);color:var(--orange)} .p-watch{background:var(--amber-soft);color:var(--amber)} .p-low{background:var(--green-soft);color:var(--green)}
+.brief p{margin:0;max-width:62ch}
+.brief .lead{font-size:15px;font-weight:500;line-height:1.6}
+.brief ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;color:var(--sub);max-width:62ch}
+.warn{background:var(--orange-soft);color:var(--orange);border-radius:12px;padding:10px 14px;font-size:13px}
+.vscore{background:var(--soft);border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:12px;flex:1;color:var(--ink)}
+.vs-k{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.vs-k>div{background:var(--card);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:2px}
+.vs-k span{font-size:13px;color:var(--sub);font-weight:600}.vs-k b{font-family:var(--num);font-size:32px;line-height:1.1}.vs-k b small{font-size:16px;color:var(--sub);font-weight:500}
+.vs-k em{font-style:normal;font-size:12.5px;color:var(--sub)}.vs-k .hit b{color:var(--orange)}.vs-k .fa b{color:var(--sub)}
+.vs-h{font-size:14px;font-weight:700;margin-top:4px}.vs-h small{font-weight:500;color:var(--sub);margin-left:6px;font-size:12.5px}
+.vs-r{display:grid;grid-template-columns:96px 1fr 52px 56px;align-items:center;gap:10px;font-size:14px;padding:4px 8px;border-radius:8px}
+.vs-r.on{background:var(--card);box-shadow:0 0 0 1.5px var(--orange) inset}
+.vs-r i{height:10px;background:var(--line);border-radius:6px;overflow:hidden;display:block}.vs-r u{display:block;height:100%;background:var(--orange);border-radius:6px}
+.vs-r b{font-family:var(--num);text-align:right}.vs-r em{font-style:normal;font-size:12.5px;color:var(--sub)}
+.vs-m{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13.5px}.vs-m span{color:var(--sub);margin-right:4px}.vs-m b{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-weight:600;color:var(--red)}
+.vs-n{font-size:12.5px;color:var(--sub);line-height:1.6;margin-top:auto}
+.pending{background:var(--soft);border-radius:12px;padding:12px 14px;color:var(--sub);font-size:12.5px}
+select{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:6px 10px;font-size:13px;max-width:100%}
+@media (max-width:1280px){.app{grid-template-columns:68px minmax(0,1fr) 320px}aside{padding-inline:10px}aside .logo span,aside a span{display:none}aside a{justify-content:center;padding:10px}aside .logo{justify-content:center}main{padding-inline:22px}}
+@media (max-width:900px){html,body{height:auto}.app{grid-template-columns:minmax(0,1fr);height:auto;overflow:visible}aside,main,.rail{height:auto;overflow:visible}.rail{border-left:0;margin-inline:16px;margin-bottom:24px;border-radius:18px;box-shadow:var(--shadow)}}
+@media (max-width:1180px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.grid2{grid-template-columns:minmax(0,1fr)}.areas{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:900px){aside a span{display:inline}aside a{justify-content:flex-start;padding:8px 12px}aside{flex-direction:row;overflow-x:auto;padding-block:10px;border-right:0;border-bottom:1px solid var(--line)}aside .logo{display:none}aside a{white-space:nowrap}main{padding-inline:16px}.areas{grid-template-columns:minmax(0,1fr)}.stats{grid-template-columns:minmax(0,1fr)}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="app">
+<aside aria-label="메뉴">
+  <div class="logo"><svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><rect width="30" height="30" rx="9" fill="var(--blue)"/><path d="M15 7c3.5 4.3 5.5 7.3 5.5 10a5.5 5.5 0 0 1-11 0c0-2.7 2-5.7 5.5-10z" fill="#fff"/></svg><span>Dorim Flood</span></div>
+  <a href="#" data-v="board" class="on"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg><span>상황판</span></a>
+  <a href="#" data-v="risk"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg><span>위험 지도</span></a>
+  <a href="#" data-v="radar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 12 18 7M12 3v2M3 12h2"/></svg><span>레이더 영상</span></a>
+  <a href="#" data-v="verify"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M4 19V5M4 19h16M8 15l3-4 3 2 5-6"/></svg><span>검증</span></a>
+</aside>
+
+<main>
+  <div class="head">
+    <div>
+      <h1 id="title">상황판</h1>
+      <div class="asof"><b id="asofTxt"></b><span id="srcTxt"></span><span class="tag">2022-08-08 실제 자료 재생</span></div>
+    </div>
+    <div class="seg" role="group" aria-label="시점" id="seg"></div>
+  </div>
+
+  <div id="v-board" class="view">
+  <div class="srcs" id="srcs"></div>
+
+  <section class="stats" id="stats"></section>
+
+  <section class="card">
+    <div class="ch">
+      <div><h2>강우와 하수관 수위</h2><div class="meta">같은 시간축 · 마우스를 올리면 두 패널 값이 함께 보입니다</div></div>
+
+    </div>
+    <div class="chartbox" id="cbox">
+      <div class="ph"><span class="panel-label">강우 강도 (mm/h) · <span style="color:var(--violet)">┅ 예보는 지금 이후</span></span><div class="only" id="onlyRain" role="group" aria-label="강우 선 보기"></div></div>
+      <svg id="rain" viewBox="0 0 760 210" width="100%" role="img" aria-label="10분 강우 강도 시계열"></svg>
+      <div class="ph"><span class="panel-label">만관율 (%) · 지금 수위가 높은 수위계 3곳</span><div class="only" id="onlySew" role="group" aria-label="수위계 선 보기"></div></div>
+      <svg id="sew" viewBox="0 0 760 200" width="100%" role="img" aria-label="하수관 수위계 만관율 시계열"></svg>
+      <div class="hoverbox" id="hb" hidden></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="ch"><h2>수위계 현황</h2><span class="meta" id="sewMeta"></span></div>
+    <div class="areas">
+      <svg id="map" viewBox="0 0 560 440" width="100%" role="img" aria-label="서울 자치구 지도 위 하수관 수위계 위치와 만관율" style="display:block;max-width:100%;height:auto;border-radius:14px"></svg>
+      <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+        <ul class="list" id="list"></ul>
+        <div class="pending" id="boardRisk"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="ch"><div><h2>수위계 상세</h2><div class="meta">강우를 위에서 거꾸로, 수위를 아래에서 그려 반응 시간을 봅니다</div></div>
+      <label class="meta" for="pick">수위계 <select id="pick"></select></label></div>
+    <div class="dlegend" id="dleg"></div>
+    <div class="chartbox"><svg id="detail" viewBox="0 0 760 300" width="100%" role="img" aria-label="선택 수위계의 강우-수위 그래프"></svg></div>
+  </section>
+  </div>
+  <div id="v-risk" class="view" hidden>
+    <section class="card">
+      <div class="ch">
+        <div><h2>배수분구 침수 위험</h2><div class="meta" id="riskMeta"></div></div>
+        <div class="only" id="riskSrc" role="group" aria-label="위험도 자료"></div>
+      </div>
+      <div class="areas">
+        <svg id="riskmap" viewBox="0 0 560 440" width="100%" role="img" aria-label="배수분구 위험도 지도" style="display:block;max-width:100%;height:auto;border-radius:14px"></svg>
+        <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+          <div class="legend" id="riskLegend"></div>
+          <ul class="list" id="riskList"></ul>
+        </div>
+      </div>
+      <div class="pending" id="riskNote"></div>
+    </section>
+  </div>
+
+  <div id="v-radar" class="view" hidden>
+    <section class="card">
+      <div class="ch">
+        <div><h2>레이더 강우 영상</h2><div class="meta">기상청 HSP 레이더 · 10분 간격 · 500 m 격자</div></div>
+        <div class="player"><button class="btn pri" id="play" aria-label="재생">재생</button><b id="rtime">--:--</b></div>
+      </div>
+      <div class="rslide"><input type="range" id="rslider" min="0" max="143" value="0" aria-label="레이더 시각"><div class="rticks" aria-hidden="true"></div></div>
+      <div class="areas">
+        <svg id="radarmap" viewBox="0 0 560 440" width="100%" role="img" aria-label="레이더 강우 영상" style="display:block;max-width:100%;height:auto;border-radius:14px"></svg>
+        <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
+          <div class="legend" id="rLegend"></div>
+          <div class="rstat"><span>유역 평균</span><b id="rMean">–</b></div>
+          <div class="rstat"><span>지도 안 최대</span><b id="rMax">–</b></div>
+          <div class="meta">유역 평균 강우 추이 (mm/h)</div>
+          <svg id="rspark" viewBox="0 0 300 110" width="100%" aria-label="유역 평균 강우 추이"></svg>
+          <div class="meta">영상은 기준 시각까지만 재생합니다. 이후는 아직 관측되지 않은 시간입니다.</div>
+        </div>
+      </div>
+    </section>
+  </div>
+  <div id="v-verify" class="view" hidden>
+    <div class="srcs"><span class="src"><i></i><b>하루 종료 후 기준</b>8/8 00–24시 관측 · 침수흔적도 8/8–8/9</span></div>
+    <section class="stats" id="vstats"></section>
+    <div class="grid2" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
+      <section class="card">
+        <div><h2>시점별 위험 분구와 적중</h2><div class="meta"><span style="color:var(--blue)">■</span> 위험 표시 분구 · <span style="color:var(--orange)">■</span> 그중 흔적 큰 분구(적중) · 아래 = 강우 단계</div></div>
+        <div class="chartbox"><svg id="vlead" viewBox="0 0 380 240" width="100%" role="img" aria-label="시점별 위험 분구와 적중 수" style="min-width:0"></svg></div>
+      </section>
+      <section class="card">
+        <div class="ch"><div><h2>발표별 예보 강우와 실제 강우</h2><div class="meta">발표 시각부터 24시까지 · 레이더 관측과 비교</div></div><div class="keys"><span><i style="background:var(--blue);height:9px;width:9px"></i>관측</span><span><i style="background:var(--violet);height:9px;width:9px"></i>예보</span></div></div>
+        <div class="chartbox"><svg id="vrain" viewBox="0 0 380 230" width="100%" role="img" aria-label="발표별 예보 강우와 실제 강우" style="min-width:0"></svg></div>
+      </section>
+    </div>
+    <section class="card">
+      <div class="ch">
+        <div><h2>위험 지도와 침수흔적</h2><div class="meta" id="vmapMeta"></div></div>
+        <div class="only" id="vSrc" role="group" aria-label="비교할 위험도"></div>
+      </div>
+      <div class="areas">
+        <svg id="vmap" viewBox="0 0 560 440" width="100%" role="img" aria-label="위험도와 침수흔적도" style="display:block;max-width:100%;height:auto;border-radius:14px"></svg>
+        <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+          <div class="legend" id="vLegend"></div>
+          <div class="vscore" id="vScore"></div>
+        </div>
+      </div>
+    </section>
+    <section class="card">
+      <div class="ch"><h2>배수분구별 점검</h2><span class="meta">침수흔적 면적이 큰 순 · 칸 = 위험 점수, 판정 = 강우 단계별 상위 % 표시 여부</span></div>
+      <div class="chartbox"><table class="vt" id="vtable"></table></div>
+    </section>
+  </div>
+</main>
+
+<section class="rail" aria-label="에이전트 활동, 제안 행동, 브리핑">
+  <div class="rblock">
+    <div class="ch"><h2>에이전트 활동</h2><span class="meta" id="actMeta"></span></div>
+    <div class="trig" id="trig"></div>
+    <ol class="acts" id="acts"></ol>
+  </div>
+  <div class="rblock">
+    <h2>제안 행동</h2>
+    <div class="prop" id="prop"></div>
+  </div>
+  <div class="rblock brief">
+    <details id="briefBox"><summary><h2>브리핑</h2><span class="meta">자세히 보기</span></summary>
+      <span class="tag" style="align-self:flex-start" id="briefMeta"></span>
+      <div class="md" id="briefMd"></div>
+    </details>
+  </div>
+</section>
+</div>
+
+<script>
+const D=/*DATA*/null;
+const GEO=/*GEO*/null;
+const TB=/*TABS*/null;
+const TERRAIN="/*TERRAIN*/";
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const T=[{k:"0400",n:24,iss:"03"},{k:"1310",n:79,iss:"09"},{k:"2040",n:124,iss:"15"},{k:"2200",n:132,iss:"21"},{k:"final",n:144,iss:"21",final:1}];
+const KS=T.filter(t=>!t.final).map(t=>t.k);
+const lab=t=>t.final?"종료 후":`${t.k.slice(0,2)}:${t.k.slice(2)}`;
+const labK=k=>lab(T.find(x=>x.k===k));
+let cur=T[1],pick=null,rainOnly="all",sewOnly=null;
+const pad=n=>String(n).padStart(2,"0");
+const tlab=i=>`${pad(Math.floor(i/6))}:${pad(i%6*10)}`;
+D.sewer.forEach(s=>{if(s.pipe_h>20)s.pipe_h/=1000;s.pct=s.level.map(v=>v==null||!s.pipe_h?null:Math.min(130,v/s.pipe_h*100))});
+const AW=Object.keys(D.aws);
+const awsMean=D.hsp.rate.map((_,i)=>{const v=AW.map(k=>D.aws[k][i]).filter(x=>x!=null);return v.length?v.reduce((a,b)=>a+b,0)/v.length:null});
+const awsMax=D.hsp.rate.map((_,i)=>Math.max(...AW.map(k=>D.aws[k][i]??0)));
+const sum=(a,f,t)=>a.slice(f,t).reduce((s,v)=>s+(v??0),0);
+const lastPct=(s,n)=>{for(let i=n-1;i>=0;i--)if(s.pct[i]!=null)return s.pct[i];return null};
+function level(p){return p>=100?["만관","p-sev"]:p>=80?["주의","p-alert"]:p>=50?["관심","p-watch"]:["정상","p-low"]}
+function pipeTxt(p){p=String(p||"").replace(/\s/g,"");let m=p.match(/^(\d+)@([\d.]+)[xX×]([\d.]+)$/);if(m)return `박스 ${m[1]}련 ${m[2]}×${m[3]} m`;
+  m=p.match(/^([\d.]+)[xX×]([\d.]+)$/);if(m)return `박스 ${m[1]}×${m[2]} m`;m=p.match(/^[Øø]?([\d.]+)$/);if(m){const v=+m[1];return `원형 Ø${(v>20?v/1000:v).toFixed(1)} m`}return p}
+function shortName(s){return (s.spot||s.loc).replace(/\s+/g," ")}
+
+function seg(){document.getElementById("seg").innerHTML=T.map(t=>`<button data-k="${t.k}" class="${t===cur?'on':''}"><b>${lab(t)}</b></button>`).join("");
+  document.querySelectorAll("#seg button").forEach(b=>b.onclick=()=>{cur=T.find(t=>t.k===b.dataset.k);pick=null;render()})}
+
+function render(){
+  seg();
+  const n=cur.n, NL=cur.final?"24:00":tlab(n), FH=Math.floor(n/6), fc=D.ldaps[cur.iss];
+  document.getElementById("asofTxt").textContent=cur.final?"2022년 8월 8일 하루 종료 후":`2022년 8월 8일 ${NL} 기준`;
+  document.getElementById("srcTxt").textContent=cur.final?"관측 00:00–24:00 · 예보 없음":`관측 ${NL}까지 · 예보 ${cur.iss}시 발표`;
+  const nSew=D.sewer.filter(s=>lastPct(s,n)!=null).length;
+  document.getElementById("srcs").innerHTML=[["레이더","10분 · "+NL],["AWS 강우",AW.length+"곳 · "+NL],["하수관 수위계",nSew+"곳 · "+NL]].map(s=>`<span class="src"><i></i><b>${s[0]}</b>${s[1]}</span>`).join("")+`<span class="src fc"><i></i><b>수치예보</b>${cur.iss}시 발표 · 1시간</span>`;
+  // stats
+  const obs=sum(D.hsp.rate,0,n)/6, fcs=TB.blend[cur.k].fc_mm, r1=sum(D.hsp.rate,n-6,n)/6, a1=Math.max(...AW.map(k=>sum(D.aws[k],n-6,n)/6));
+  const full=D.sewer.filter(s=>(lastPct(s,n)??0)>=100).length, warnN=D.sewer.filter(s=>(lastPct(s,n)??0)>=80).length;
+  const c3=sum(D.hsp.rate,n-18,n)/6, r=26,C=2*Math.PI*r,frac=Math.min(c3/120,1);
+  const col=c3>=90?css('--red'):c3>=60?css('--orange'):c3>=30?css('--amber'):css('--blue');
+  const tick=v=>{const a=v/120*2*Math.PI;return `<line x1="${32+(r-6)*Math.sin(a)}" y1="${32-(r-6)*Math.cos(a)}" x2="${32+(r+6)*Math.sin(a)}" y2="${32-(r+6)*Math.cos(a)}" stroke="${css('--ink')}" stroke-width="1.6"/>`};
+  const ring=`<svg width="64" height="64" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="${r}" fill="none" stroke="${css('--soft')}" stroke-width="7"/><circle cx="32" cy="32" r="${r}" fill="none" stroke="${col}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${C*frac} ${C}" transform="rotate(-90 32 32)"/></svg>`;
+  const c3lbl=c3>=90?"호우경보 기준 90 mm 초과":c3>=60?"호우주의보 기준 60 mm 초과":(60-c3<1?"호우주의보 기준에 거의 도달":`주의보 기준까지 ${(60-c3).toFixed(0)} mm`);
+  const S=[["지금까지 관측","--blue",obs.toFixed(0),"mm",`00:00–${NL} 레이더 유역평균`],
+           ["남은 시간 예보","--violet",cur.final?"–":fcs.toFixed(1),cur.final?"":"mm",cur.final?"하루가 끝나 예보 구간 없음":`${NL}–24:00 · ${cur.iss}시 발표`],
+           ["3시간 누적","--orange",c3.toFixed(0),"mm",`${c3lbl} · 최근 1시간 ${r1.toFixed(0)} mm`,ring],
+           ["만관 수위계","--red",full,`/ ${nSew}곳`,`80% 이상 ${warnN}곳 · AWS 1시간 최대 ${a1.toFixed(0)} mm`]];
+  document.getElementById("stats").innerHTML=S.map(s=>`<div class="stat"><div class="l"><i style="background:var(${s[1]})"></i>${s[0]}</div><div class="row"><div class="v">${s[2]}<small>${s[3]}</small></div>${s[5]||""}</div><div class="s">${s[4]}</div></div>`).join("");
+  // sensors at as_of
+  const ranked=D.sewer.map(s=>({s,p:lastPct(s,n)})).filter(o=>o.p!=null).sort((a,b)=>b.p-a.p);
+  const top=ranked.slice(0,3).map(o=>o.s);
+  if(sewOnly&&!top.some(s=>s.id===sewOnly))sewOnly=null;
+  onlyButtons(n,fc,top);
+  drawRain(n,fc);drawSew(n,top);
+  drawLog(n);
+  // list + map
+  document.getElementById("sewMeta").textContent=`${NL} 만관율 · 관 높이 대비`;
+  document.getElementById("list").innerHTML=ranked.slice(0,6).map(o=>{const l=level(o.p);return `<li data-id="${o.s.id}"><span class="nm">${shortName(o.s)}<small>${o.s.gu}구 · ${pipeTxt(o.s.pipe)}</small></span><span class="pill ${l[1]}">${o.p.toFixed(0)}% ${l[0]}</span></li>`}).join("");
+  document.querySelectorAll("#list li").forEach(li=>li.onclick=()=>{pick=li.dataset.id;document.getElementById("pick").value=pick;drawDetail(n)});
+  drawMap(n);
+  brief();
+  const sel=document.getElementById("pick");
+  sel.innerHTML=ranked.map(o=>`<option value="${o.s.id}">${shortName(o.s)} (${o.p.toFixed(0)}%)</option>`).join("");
+  if(!pick)pick=ranked[0]?.s.id; sel.value=pick; sel.onchange=()=>{pick=sel.value;drawDetail(n)};
+  const rkb=TB.blend[cur.k].ranked,bt=Object.entries(rkb.regions).filter(([,d])=>d.flag).sort((a,b)=>b[1].n_top-a[1].n_top).slice(0,3);
+  document.getElementById("boardRisk").innerHTML=rkb.top_pct>0?`<b>강우 단계 ${rkb.stage}</b> (오늘 3시간 최대 ${rkb.r3h_max_basin_mm.toFixed(0)} mm) → 위험 상위 ${rkb.top_pct}% ${rkb.n_top_units.toLocaleString()}필지 · 위험 표시 분구 ${rkb.n_flagged_regions}곳: `+bt.map(([n,d])=>`${n} ${d.n_top}`).join(" · ")+` (위험 지도 탭)`:`<b>강우 단계 약함</b> (오늘 3시간 최대 ${rkb.r3h_max_basin_mm.toFixed(0)} mm) · 위험 지역을 표시하지 않습니다`;
+  drawDetail(n);
+  if(view==="risk")renderRisk(n);
+  if(view==="radar")renderRadar(n);
+  if(view==="verify")renderVerify();
+}
+
+function onlyButtons(n,fc,top){
+  const r=document.getElementById("onlyRain"),w=document.getElementById("onlySew");
+  r.innerHTML=[["all","전체",""],["radar","레이더 유역평균","--blue"],["aws","AWS 강우 평균","--teal"]].map(b=>`<button data-v="${b[0]}" class="${rainOnly===b[0]?'on':''}">${b[2]?`<i style="background:var(${b[2]})"></i>`:""}${b[1]}</button>`).join("");
+  const cols=["--s1","--s2","--s3"];
+  w.innerHTML=`<button data-v="" class="${sewOnly?'':'on'}">전체</button>`+top.map((s,k)=>`<button data-v="${s.id}" class="${sewOnly===s.id?'on':''}"><i style="background:var(${cols[k]})"></i>${shortName(s).slice(0,9)}</button>`).join("");
+  r.querySelectorAll("button").forEach(b=>b.onclick=()=>{rainOnly=b.dataset.v;onlyButtons(n,fc,top);drawRain(n,fc)});
+  w.querySelectorAll("button").forEach(b=>b.onclick=()=>{sewOnly=b.dataset.v||null;onlyButtons(n,fc,top);drawSew(n,top)});
+}
+const G={W:760,L:44,R:16};
+function xs(i){return G.L+i*(G.W-G.L-G.R)/144}
+function smoothPath(pts){ // monotone-ish: straight segments, gaps break
+  let d="",pen=false;pts.forEach(p=>{if(p==null){pen=false;return}d+=(pen?"L":"M")+p[0].toFixed(1)+","+p[1].toFixed(1);pen=true});return d}
+function axes(H,T,B,yMax,step,unit,n){
+  const ih=H-T-B,y=v=>T+ih-Math.min(v,yMax)/yMax*ih;let g="";
+  g+=`<rect x="${xs(n)}" y="${T}" width="${xs(144)-xs(n)}" height="${ih}" fill="${css('--soft')}"/>`;
+  for(let v=0;v<=yMax;v+=step)g+=`<line x1="${G.L}" x2="${G.W-G.R}" y1="${y(v)}" y2="${y(v)}" stroke="${css('--line')}" ${v?'stroke-dasharray="3 5"':''}/><text x="${G.L-8}" y="${y(v)+4}" text-anchor="end">${v}${unit}</text>`;
+  g+=`<line x1="${xs(n)}" x2="${xs(n)}" y1="${T-4}" y2="${T+ih}" stroke="${css('--ink')}" stroke-width="1" stroke-dasharray="2 3"/>`;
+  return {g,y,ih};
+}
+function fitW(id,H){const box=document.getElementById(id).parentElement;G.W=Math.max(560,Math.round(box.clientWidth||760));document.getElementById(id).setAttribute("viewBox",`0 0 ${G.W} ${H}`)}
+function drawRain(n,fc){
+  fitW("rain",170);const H=170,T=16,B=26,yMax=150;const {g:ax,y,ih}=axes(H,T,B,yMax,50,"",n);let g=ax;
+  const hp=D.hsp.rate.map((v,i)=>i<n?[xs(i+.5),y(v)]:null), ap=awsMean.map((v,i)=>i<n&&v!=null?[xs(i+.5),y(v)]:null);
+  const area=`M${xs(.5)},${T+ih}`+hp.filter(Boolean).map(p=>`L${p[0]},${p[1]}`).join("")+`L${xs(n-.5)},${T+ih}Z`;
+  g+=`<defs><linearGradient id="ga" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${css('--blue')}" stop-opacity=".28"/><stop offset="1" stop-color="${css('--blue')}" stop-opacity="0"/></linearGradient></defs>`;
+  if(rainOnly!=="aws")g+=`<path d="${area}" fill="url(#ga)"/><path d="${smoothPath(hp)}" fill="none" stroke="${css('--blue')}" stroke-width="2" stroke-linejoin="round"/>`;
+  if(rainOnly!=="radar")g+=`<path d="${smoothPath(ap)}" fill="none" stroke="${css('--teal')}" stroke-width="1.4" stroke-linejoin="round" opacity=".9"/>`;
+  let fp="";const fh=Math.floor(n/6);for(let h=fh;h<24;h++){const v=fc[h]??0;fp+=(h===fh?"M"+xs(n):"L"+xs(h*6))+","+y(v)+"L"+xs(h*6+6)+","+y(v)}
+  if(n<144&&fp){const base=y(0),fsum=fc.slice(fh).reduce((s,v)=>s+(v??0),0)-(fc[fh]??0)*((n%6)/6),fmax=Math.max(0,...fc.slice(fh).map(v=>v??0));
+    g+=`<path d="${fp}L${xs(144)},${base}L${xs(n)},${base}Z" fill="${css('--violet')}" fill-opacity=".12"/>`;
+    g+=`<path d="${fp}" fill="none" stroke="${css('--violet')}" stroke-width="2" stroke-dasharray="5 4"/>`;
+    const lx=Math.min(xs(n)+10,G.W-G.R-230);
+    g+=`<rect x="${lx}" y="${y(0)-46}" width="220" height="36" rx="8" fill="${css('--card')}" stroke="${css('--violet')}" stroke-opacity=".35"/>`+
+       `<text x="${lx+10}" y="${y(0)-31}" style="fill:${css('--violet')};font-weight:600;font-family:var(--ui)">수치예보 ${cur.iss}시 발표</text>`+
+       `<text x="${lx+10}" y="${y(0)-16}" style="fill:${css('--sub')};font-family:var(--ui)">남은 시간 합계 ${fsum.toFixed(1)} mm · 최대 ${fmax.toFixed(1)} mm/h</text>`}
+  g+=xs(n)>G.W-70?`<text x="${xs(n)-6}" y="${T+10}" text-anchor="end" style="fill:${css('--ink')};font-weight:600">지금</text>`:`<text x="${xs(n)+6}" y="${T+10}" style="fill:${css('--ink')};font-weight:600">지금</text>`;
+  for(let h=0;h<=24;h+=3)g+=`<text x="${xs(h*6)}" y="${H-6}" text-anchor="middle">${pad(h)}시</text>`;
+  document.getElementById("rain").innerHTML=g+`<line id="cr1" y1="${T}" y2="${T+ih}" stroke="${css('--faint')}" visibility="hidden"/>`;
+}
+function drawSew(n,top){
+  fitW("sew",160);const H=160,T=12,B=26,yMax=120;const {g:ax,y,ih}=axes(H,T,B,yMax,25,"",n);let g=ax;
+  g+=`<line x1="${G.L}" x2="${G.W-G.R}" y1="${y(100)}" y2="${y(100)}" stroke="${css('--red')}" stroke-dasharray="4 4"/><text x="${G.W-G.R}" y="${y(100)-4}" text-anchor="end" style="fill:${css('--red')}">만관 100%</text>`;
+  const cols=["--s1","--s2","--s3"];
+  top.forEach((s,k)=>{if(sewOnly&&s.id!==sewOnly)return;const p=s.pct.map((v,i)=>i<n&&v!=null?[xs(i+.5),y(v)]:null);g+=`<path d="${smoothPath(p)}" fill="none" stroke="${css(cols[k])}" stroke-width="2" stroke-linejoin="round"/>`;
+    const lp=lastPct(s,n);if(lp!=null){const yy=y(lp)+(k%2?10:-4);g+=`<circle cx="${xs(n-.5)}" cy="${y(lp)}" r="3.5" fill="${css(cols[k])}"/>`}});
+  for(let h=0;h<=24;h+=3)g+=`<text x="${xs(h*6)}" y="${H-6}" text-anchor="middle">${pad(h)}시</text>`;
+  document.getElementById("sew").innerHTML=g+`<line id="cr2" y1="${T}" y2="${T+ih}" stroke="${css('--faint')}" visibility="hidden"/>`;
+  hover(n,top,cols);
+}
+function hover(n,top,cols){
+  const box=document.getElementById("cbox"),hb=document.getElementById("hb");
+  const mv=e=>{const svg=e.currentTarget,rc=svg.getBoundingClientRect(),xv=(e.clientX-rc.left)/rc.width*G.W;let i=Math.floor((xv-G.L)/(G.W-G.L-G.R)*144);
+    if(i<0||i>=144){out();return}const X=xs(i+.5);["cr1","cr2"].forEach(id=>{const l=document.getElementById(id);l.setAttribute("x1",X);l.setAttribute("x2",X);l.setAttribute("visibility","visible")});
+    const isObs=i<n;let h=`<div><b>${tlab(i)}</b><span>${isObs?"관측":"예보"}</span></div>`;
+    if(isObs){h+=`<div><span>레이더</span><b>${D.hsp.rate[i].toFixed(1)} mm/h</b></div><div><span>AWS 강우 평균</span><b>${awsMean[i]==null?"–":awsMean[i].toFixed(1)+" mm/h"}</b></div>`;
+      top.forEach((s,k)=>{if(sewOnly&&s.id!==sewOnly)return;h+=`<div><span style="color:var(${cols[k]})">${shortName(s).slice(0,8)}</span><b>${s.pct[i]==null?"결측":s.pct[i].toFixed(0)+"%"}</b></div>`})}
+    else{const v=D.ldaps[cur.iss][Math.floor(i/6)];h+=`<div><span>예보 ${cur.iss}시</span><b>${v==null?"–":v.toFixed(1)+" mm/h"}</b></div><div><span>수위</span><b>예보 없음</b></div>`}
+    hb.innerHTML=h;hb.hidden=false;const br=box.getBoundingClientRect();let lx=e.clientX-br.left+box.scrollLeft+14;if(lx>box.clientWidth-170)lx-=190;hb.style.left=lx+"px";hb.style.top=(e.clientY-br.top+12)+"px"};
+  const out=()=>{hb.hidden=true;["cr1","cr2"].forEach(id=>document.getElementById(id)?.setAttribute("visibility","hidden"))};
+  ["rain","sew"].forEach(id=>{const s=document.getElementById(id);s.onmousemove=mv;s.onmouseleave=out});
+}
+function drawLog(n){
+  const ev=[],add=(i,c,t,m,ic)=>{if(i<n)ev.push({i,c,t,m,ic})};
+  [["03",4],["09",10],["15",16],["21",22]].forEach(([k,h])=>{const v=D.ldaps[k].slice(Number(k)).reduce((s,x)=>s+(x??0),0);add(h*6,"--violet",`${k}시 예보 도착`,`${k}–24시 예보 ${v.toFixed(1)} mm (도착 시각 가정)`,"in")});
+  let c30=0,c60=0,c90=0;for(let i=18;i<144;i++){const c=sum(D.hsp.rate,i-17,i+1)/6;
+    if(!c30&&c>=30){c30=1;add(i+1,"--amber","3시간 누적 30 mm",`레이더 유역평균 ${c.toFixed(0)} mm`,"rain")}
+    if(!c60&&c>=60){c60=1;add(i+1,"--orange","호우주의보 기준 도달",`3시간 누적 ${c.toFixed(0)} mm (기준 60 mm)`,"rain")}
+    if(!c90&&c>=90){c90=1;add(i+1,"--red","호우경보 기준 도달",`3시간 누적 ${c.toFixed(0)} mm (기준 90 mm)`,"rain")}}
+  for(let k=0;k<144;k++){const f=D.sewer.filter(s=>s.pct[k]!=null&&s.pct[k]>=100&&!(s.pct.slice(0,k).some(v=>v!=null&&v>=100)));
+    if(f.length)add(k,"--red",`수위계 만관 ${f.length}곳`,f.map(shortName).slice(0,3).join(", ")+(f.length>3?` 외 ${f.length-3}곳`:""),"pipe")}
+  const gaps=D.sewer.filter(s=>s.pct.slice(Math.max(0,n-6),n).every(v=>v==null)).length;
+  if(gaps)ev.push({i:n-1,c:"--faint",t:`수위계 ${gaps}곳 수신 없음`,m:"최근 1시간 자료 없음",ic:"gap"});
+  const rkl=TB.blend[cur.k].ranked;const ev80=D.sewer.filter(s=>(lastPct(s,n)??0)>=80&&s.drain&&(rkl.regions[s.drain]||{}).flag);
+  if(ev80.length)ev.push({i:n,c:"--red",t:"확인 필요 · 예측과 관측 일치",m:`위험 표시 분구 안 수위계 ${ev80.length}곳이 80%를 넘었습니다: `+ev80.map(s=>`${shortName(s)}(${s.drain})`).slice(0,3).join(", "),ic:"act"});
+  const fcs=TB.blend[cur.k].fc_mm,r3=sum(D.hsp.rate,n-18,n)/6;
+  if(r3>20&&fcs<r3)ev.push({i:n,c:"--orange",t:"판단 필요",m:`최근 3시간 관측 ${r3.toFixed(0)} mm인데 남은 시간 예보는 ${fcs.toFixed(1)} mm입니다. 경보 단계를 정해 주세요.`,ic:"act",act:1});
+  ev.sort((a,b)=>b.i-a.i);
+  const icons={in:'<path d="M12 4v10m0 0-4-4m4 4 4-4M5 19h14"/>',rain:'<path d="M12 4c3 3.8 5 6.3 5 8.6a5 5 0 0 1-10 0C7 10.3 9 7.8 12 4z"/>',gap:'<path d="M12 8v5M12 16.5v.5"/>',act:'<path d="M5 12l4 4 10-10"/>',pipe:'<path d="M3 10c1.5-1.4 3-1.4 4.5 0s3 1.4 4.5 0 3-1.4 4.5 0 3 1.4 4.5 0M3 15c1.5-1.4 3-1.4 4.5 0s3 1.4 4.5 0 3-1.4 4.5 0 3 1.4 4.5 0"/>'};
+  const LG=document.getElementById("log");if(LG)LG.innerHTML=ev.map(e=>`<li><span class="ic" style="color:var(${e.c})"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${icons[e.ic]}</svg></span><div><div class="t"><span>${e.t}</span><time>${tlab(Math.min(e.i,143))}</time></div><p>${e.m}</p>${e.act?'<div class="act"><button class="btn pri">경보 상향</button><button class="btn">유지</button></div>':''}</div></li>`).join("")||`<li><span></span><p class="meta">아직 기록이 없습니다.</p></li>`;
+}
+function drawMap(n){
+  const svg=document.getElementById("map"),W=560,H=440,lon0=126.852,lon1=126.992,lat0=37.425,lat1=37.540,k=Math.cos(37.48*Math.PI/180);
+  const sx=(W)/((lon1-lon0)*k),sy=H/(lat1-lat0),s=Math.min(sx,sy),ox=(W-(lon1-lon0)*k*s)/2,oy=(H-(lat1-lat0)*s)/2;
+  const P=([x,y])=>[ox+(x-lon0)*k*s,oy+(lat1-y)*s];
+  const path=f=>f.r.map(r=>"M"+r.map(p=>P(p).map(v=>v.toFixed(1)).join(",")).join("L")+"Z").join("");
+  const inV=c=>{const p=P(c);return p[0]>20&&p[0]<W-20&&p[1]>14&&p[1]<H-10};
+  let g=`<defs><clipPath id="mc"><rect width="${W}" height="${H}" rx="14"/></clipPath></defs><g clip-path="url(#mc)"><rect width="${W}" height="${H}" fill="${css('--soft')}"/>`;
+  g+=terrainImg(P)+GEO.gu.map(f=>`<path d="${path(f)}" fill="${css('--card')}" style="fill-opacity:var(--gu-wash)" stroke="${css('--ink')}" stroke-opacity=".28" stroke-width="1.2"/>`).join("");
+  g+=`<path d="${GEO.drain.map(path).join("")}" fill="none" stroke="${css('--line')}" stroke-width=".6"/>`;
+  g+=`<path d="${GEO.river.map(path).join("")}" fill="${css('--sky')}" opacity=".55"/>`;
+  g+=`<path d="${GEO.basin.map(path).join("")}" fill="${css('--blue')}" fill-opacity=".05" stroke="${css('--blue')}" stroke-width="1.6" stroke-dasharray="5 4"/>`;
+  g+=GEO.gu.filter(f=>inV(f.c)).map(f=>{const p=P(f.c);return `<text x="${p[0]}" y="${p[1]}" text-anchor="middle" style="font-family:var(--ui);font-size:12px;fill:${css('--faint')};font-weight:500">${f.n}</text>`}).join("");
+  const ranked=D.sewer.map(x=>({x,p:lastPct(x,n)})).sort((a,b)=>(a.p??-1)-(b.p??-1));
+  ranked.forEach(({x,p})=>{const c=p==null?css('--faint'):css(p>=100?'--red':p>=80?'--orange':p>=50?'--amber':'--green');const [cx,cy]=P([x.lon,x.lat]);
+    g+=`<g class="dot" data-id="${x.id}" style="cursor:pointer"><circle cx="${cx}" cy="${cy}" r="${p!=null&&p>=80?15:10}" fill="${c}" opacity=".18"/><circle cx="${cx}" cy="${cy}" r="5.5" fill="${c}" stroke="${css('--card')}" stroke-width="1.5"/>`+
+`<title>${shortName(x)} · ${p==null?'수신 없음':p.toFixed(0)+'%'}</title></g>`});
+  const sp=D.sewer.find(x=>x.id===pick);if(sp){const [cx,cy]=P([sp.lon,sp.lat]),p=lastPct(sp,n);g+=`<circle cx="${cx}" cy="${cy}" r="10" fill="none" stroke="${css('--ink')}" stroke-width="2"/><text x="${cx+14}" y="${cy+4}" style="font-family:var(--ui);font-size:12.5px;font-weight:700;fill:${css('--ink')};paint-order:stroke;stroke:${css('--card')};stroke-width:4px;stroke-linejoin:round">${shortName(sp)} ${p==null?'':p.toFixed(0)+'%'}</text>`}
+  g+=`</g><text x="12" y="${H-12}" style="font-family:var(--ui);font-size:11.5px;fill:${css('--sub')}">┄ 도림천 유역 · 회색 선 배수분구 · 파란 면 하천</text>`;
+  svg.innerHTML=g;
+  svg.querySelectorAll(".dot").forEach(d=>d.onclick=()=>{pick=d.dataset.id;document.getElementById("pick").value=pick;drawDetail(n)});
+}
+function md2html(s){const esc=x=>x.replace(/&/g,"&amp;").replace(/</g,"&lt;");const inl=x=>esc(x).replace(/\*\*(.+?)\*\*/g,"<b>$1</b>").replace(/`(.+?)`/g,"<code>$1</code>");
+  const L=s.split("\n");let h="",inList=false,tbl=[];const flushT=()=>{if(!tbl.length)return;const rows=tbl.filter(r=>!/^\|?\s*-{2,}/.test(r.replace(/[|: ]/g,"").length?r:"--"));
+    h+=`<div class="tw"><table>`+tbl.filter(r=>!/^\|[\s:|-]+\|$/.test(r)).map((r,i)=>"<tr>"+r.replace(/^\||\|$/g,"").split("|").map(c=>i?`<td>${inl(c.trim())}</td>`:`<th>${inl(c.trim())}</th>`).join("")+"</tr>").join("")+"</table></div>";tbl=[]};
+  for(const l of L){if(/^\s*\|/.test(l)){tbl.push(l.trim());continue}flushT();
+    if(/^\s*[-*] /.test(l)||/^\s*\d+\. /.test(l)){if(!inList){h+="<ul>";inList=true}h+=`<li>${inl(l.replace(/^\s*([-*]|\d+\.) /,""))}</li>`;continue}
+    if(inList){h+="</ul>";inList=false}
+    if(/^> /.test(l)){h+=`<p class="q">${inl(l.slice(2))}</p>`;continue}
+    if(/^# /.test(l))continue;if(/^##+ /.test(l)){h+=`<h3>${inl(l.replace(/^#+ /,""))}</h3>`;continue}
+    if(l.trim())h+=`<p>${inl(l)}</p>`}
+  flushT();if(inList)h+="</ul>";return h}
+function brief(){
+  const b=TB.briefings||{},main=b[cur.k],tom=cur.k==="2200"?b["2200_tomorrow"]:null;
+  const trig=document.getElementById("trig"),acts=document.getElementById("acts"),prop=document.getElementById("prop"),md=document.getElementById("briefMd");
+  if(!main){trig.textContent="이 장면 기록이 없습니다.";acts.innerHTML="";prop.innerHTML="";md.innerHTML="";return}
+  const tr=(main.trigger||"").replace(/^질문 \(([^)]+)\):\s*/,"").split("[직전 제안]");
+  const ev=tr[0].replace("[자동 실행]","").replace(/\s*[^.]*(판단|검증|제안)하라\.?\s*$/,"").replace(/[.:]\s*$/,"").trim();
+  const pv=tr[1]?tr[1].split(":")[0].trim():"";
+  trig.innerHTML=`<b>${cur.final?"00:30":labK(cur.k)} 🔔</b><span>자동 실행 · ${ev}${pv?`<br><span style="opacity:.8">직전 제안 ${pv} · 미승인</span>`:""}</span>`;
+  acts.innerHTML=(main.trace||[]).map(s=>`<li class="${s.who==="총괄"?"":"sub"}"><span class="who w-${s.who}">${s.who}</span><span><span class="what">${s.what}</span>${s.result?`<span class="res">${s.result}</span>`:""}</span></li>`).join("");
+  document.getElementById("actMeta").textContent=`도구 호출 ${(main.trace||[]).filter(s=>s.mode).length}회`;
+  // 실행 기록 순서대로 한 줄씩 나타나게 (실제 운영에서는 실행 중 실시간으로 쌓임)
+  clearInterval(window._actT);const items=[...acts.children],reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if(!reduce&&!window._noAnim){items.forEach(li=>li.classList.add("pend"));prop.classList.add("pend");let i=0;
+    window._actT=setInterval(()=>{if(i<items.length){items[i++].classList.remove("pend")}else{prop.classList.remove("pend");clearInterval(window._actT)}},420)}
+  const a=main.actions;
+  if(a){const cls=a.level==="침수경보"?"p-sev":a.level==="침수예보"?"p-alert":"p-low";
+    prop.innerHTML=`<div class="lv"><span class="pill ${cls}" style="font-size:14px">${a.level}</span><b>${a.change}</b></div><div>${a.level_reason||""}</div>`+
+      (a.field_checks&&a.field_checks.length?`<h4>현장 확인</h4><ul>${a.field_checks.map(f=>`<li><b>${f.place}</b> · ${f.why}</li>`).join("")}</ul>`:"")+
+      (a.message_draft?`<h4>재난문자 초안</h4><div class="sms">${a.message_draft}</div>`:"")+
+      (a.next_check?`<div class="next">다시 판단: ${a.next_check}</div>`:"")+
+      `<div class="act"><button class="btn pri">승인</button><button class="btn">수정</button><button class="btn">재분석</button></div>`}
+  else prop.innerHTML=`<p class="meta">이 장면은 제안 행동이 없습니다.</p>`;
+  md.innerHTML=md2html(main.md)+(tom?`<h3 class="sep">추가 · 내일(8/9) 전망</h3>`+md2html(tom.md):"");
+  document.getElementById("briefMeta").textContent=`claude 헤드리스 · ${main.model||"sonnet"} · 총괄+관측+예측 에이전트 실제 실행 기록`;
+}
+function drawDetail(n){
+  const s=D.sewer.find(x=>x.id===pick);if(!s)return;fitW("detail",260);const W=G.W,H=260,B=26,rT=8,rB=100,lT=124,lB=H-B;let g="";
+  const yr=v=>rT+Math.min(v,150)/150*(rB-rT), yl=v=>lB-Math.min(v,120)/120*(lB-lT);
+  g+=`<rect x="${xs(n)}" y="${rT}" width="${xs(144)-xs(n)}" height="${lB-rT}" fill="${css('--soft')}"/>`;
+  [0,50,100,150].forEach(v=>g+=`<line x1="${G.L}" x2="${W-G.R}" y1="${yr(v)}" y2="${yr(v)}" stroke="${css('--line')}" ${v?'stroke-dasharray="3 5"':''}/><text x="${G.L-8}" y="${yr(v)+4}" text-anchor="end">${v}</text>`);
+  [0,50,100].forEach(v=>g+=`<line x1="${G.L}" x2="${W-G.R}" y1="${yl(v)}" y2="${yl(v)}" stroke="${css(v===100?'--red':'--line')}" ${v?'stroke-dasharray="3 5"':''}/><text x="${G.L-8}" y="${yl(v)+4}" text-anchor="end">${v}%</text>`);
+  for(let i=0;i<n;i++){const v=D.hsp.rate[i];if(v>0)g+=`<rect x="${xs(i)+.5}" y="${rT}" width="${Math.max(1,xs(1)-xs(0)-1)}" height="${yr(v)-rT}" fill="${css('--blue')}" opacity=".75"/>`}
+  const p=s.pct.map((v,i)=>i<n&&v!=null?[xs(i+.5),yl(v)]:null);g+=`<path d="${smoothPath(p)}" fill="none" stroke="${css('--orange')}" stroke-width="2.2"/>`;
+  g+=`<line x1="${xs(n)}" x2="${xs(n)}" y1="${rT}" y2="${lB}" stroke="${css('--ink')}" stroke-dasharray="2 3"/>`;
+  for(let h=0;h<=24;h+=3)g+=`<text x="${xs(h*6)}" y="${H-6}" text-anchor="middle">${pad(h)}시</text>`;
+  document.getElementById("detail").innerHTML=g;
+  document.getElementById("dleg").innerHTML=`<span><i style="background:var(--blue)"></i>강우 mm/h (레이더 유역평균, 위에서 아래로)</span><span><i style="background:var(--orange)"></i>${shortName(s)} 만관율 · ${pipeTxt(s.pipe)}${s.hist_max?` · 기왕최고 ${s.hist_max} m`:''}</span>`;
+  drawMap(n);
+}
+let view="board",riskSrc="blend",rIdx=null,rTimer=null;
+const TITLES={board:"상황판",risk:"위험 지도",radar:"레이더 영상",verify:"검증"};
+let showTerrain=true;
+function terrainImg(P){if(!showTerrain)return "";const a=P([126.8292,37.540]),b=P([127.0148,37.425]);return `<image href="${TERRAIN}" x="${a[0]}" y="${a[1]}" width="${b[0]-a[0]}" height="${b[1]-a[1]}" preserveAspectRatio="none" style="opacity:var(--terrain-op)"/>`}
+function mapP(W,H){const lon0=126.852,lon1=126.992,lat0=37.425,lat1=37.540,k=Math.cos(37.48*Math.PI/180);
+  const s=Math.min(W/((lon1-lon0)*k),H/(lat1-lat0)),ox=(W-(lon1-lon0)*k*s)/2,oy=(H-(lat1-lat0)*s)/2;
+  return ([x,y])=>[ox+(x-lon0)*k*s,oy+(lat1-y)*s]}
+function pathOf(P,f){return f.r.map(r=>"M"+r.map(p=>P(p).map(v=>v.toFixed(1)).join(",")).join("L")+"Z").join("")}
+function guLabels(P,W,H){return GEO.gu.map(f=>{const p=P(f.c);if(p[0]<20||p[0]>W-20||p[1]<14||p[1]>H-10)return "";return `<text x="${p[0]}" y="${p[1]}" text-anchor="middle" style="font-family:var(--ui);font-size:12px;fill:${css('--sub')};font-weight:500;paint-order:stroke;stroke:${css('--card')};stroke-width:3px">${f.n}</text>`}).join("")}
+function setView(v){view=v;document.querySelectorAll("aside a[data-v]").forEach(a=>a.classList.toggle("on",a.dataset.v===v));
+  ["board","risk","radar","verify"].forEach(k=>document.getElementById("v-"+k).hidden=(k!==v));
+  document.getElementById("title").textContent=TITLES[v];if(v!=="radar")stopPlay();render()}
+document.querySelectorAll("aside a[data-v]").forEach(a=>a.onclick=e=>{e.preventDefault();setView(a.dataset.v)});
+
+let layers={risk:true,sewer:true,water:true,terrain:true};
+function pip(pt,ring){let c=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const [xi,yi]=ring[i],[xj,yj]=ring[j];if(((yi>pt[1])!=(yj>pt[1]))&&(pt[0]<(xj-xi)*(pt[1]-yi)/(yj-yi)+xi))c=!c}return c}
+function drainOf(lon,lat){for(const f of GEO.drain)for(const r of f.r)if(pip([lon,lat],r))return f.n;return null}
+D.sewer.forEach(s=>s.drain=drainOf(s.lon,s.lat));
+const shareCol=s=>s>=0.2?css('--red'):css('--orange');
+function rankedOf(k){return k==="final"?TB.observed_ranked:TB.blend[k].ranked}
+function renderRisk(n){
+  const rk=rankedOf(cur.k),R=rk.regions;
+  document.getElementById("riskSrc").innerHTML=[["risk","예측 위험"],["sewer","수위계 증거"],["water","하천·유역"],["terrain","지형"]].map(b=>`<button data-l="${b[0]}" class="${layers[b[0]]?'on':''}">${b[1]}</button>`).join("");
+  document.querySelectorAll("#riskSrc button[data-l]").forEach(b=>b.onclick=()=>{layers[b.dataset.l]=!layers[b.dataset.l];showTerrain=layers.terrain;render()});
+  const W=560,H=440,P=mapP(W,H);let g=`<defs><clipPath id="rc"><rect width="${W}" height="${H}" rx="14"/></clipPath></defs><g clip-path="url(#rc)"><rect width="${W}" height="${H}" fill="${css('--soft')}"/>`;
+  g+=terrainImg(P)+GEO.gu.map(f=>`<path d="${pathOf(P,f)}" fill="${css('--card')}" style="fill-opacity:var(--gu-wash)" stroke="${css('--ink')}" stroke-opacity=".28" stroke-width="1.2"/>`).join("");
+  g+=GEO.drain.map(f=>{const d=R[f.n];if(!d||!layers.risk)return `<path d="${pathOf(P,f)}" fill="none" stroke="${css('--line')}" stroke-width=".6"/>`;
+    if(!d.flag)return `<path d="${pathOf(P,f)}" fill="${css('--green')}" fill-opacity=".12" stroke="${css('--card')}" stroke-width="1"><title>${f.n} · 위험 표시 분구 아님 (표시 대상 ${(d.share*100).toFixed(1)}%)</title></path>`;
+    return `<path d="${pathOf(P,f)}" fill="${shareCol(d.share)}" fill-opacity="${0.35+Math.min(d.share,0.5)}" stroke="${css('--card')}" stroke-width="1"><title>${f.n} · 위험 상위 ${rk.top_pct}% 필지 ${d.n_top}개 (분구의 ${(d.share*100).toFixed(1)}%)</title></path>`}).join("");
+  if(layers.water){g+=`<path d="${GEO.river.map(f=>pathOf(P,f)).join("")}" fill="${css('--sky')}" opacity=".6"/>`;
+    g+=`<path d="${GEO.basin.map(f=>pathOf(P,f)).join("")}" fill="none" stroke="${css('--blue')}" stroke-width="1.6" stroke-dasharray="5 4"/>`}
+  g+=guLabels(P,W,H);
+  const both=[],missed=[];
+  if(layers.sewer){D.sewer.forEach(s=>{const p=lastPct(s,n);if(p==null)return;const [cx,cy]=P([s.lon,s.lat]);const d=R[s.drain];const on=d&&d.flag;
+    const c=css(p>=100?'--red':p>=80?'--orange':p>=50?'--amber':'--green');
+    if(p>=80&&on)both.push(s);if(p>=80&&!on)missed.push(s);const flag=p>=80&&!on;
+    g+=`<circle cx="${cx}" cy="${cy}" r="6" fill="${c}" stroke="${css(flag?'--ink':'--card')}" stroke-width="${flag?2.5:1.5}"><title>${shortName(s)} ${p.toFixed(0)}% · ${s.drain||'분구 밖'}${on?' · 위험 표시 분구':''}</title></circle>`;
+    if(p>=80)g+=`<text x="${cx+9}" y="${cy-7}" style="font-family:var(--num);font-size:11px;font-weight:600;fill:${c};paint-order:stroke;stroke:${css('--card')};stroke-width:3px">${p.toFixed(0)}%</text>`})}
+  if(rk.top_pct<=0)g+=`<rect x="${W/2-150}" y="${H/2-22}" width="300" height="44" rx="12" fill="${css('--card')}" opacity=".92"/><text x="${W/2}" y="${H/2+5}" text-anchor="middle" style="font-family:var(--ui);font-size:13px;fill:${css('--sub')}">강우가 약해 위험 지역을 표시하지 않습니다</text>`;
+  g+=`</g>`;
+  document.getElementById("riskmap").innerHTML=g;
+  document.getElementById("riskLegend").innerHTML=`<span>위험 표시 분구 (표시 대상 비중)</span>`+[["--orange","5–20%"],["--red","20% 이상"],["--green","5% 미만 · 표시 안 함"]].map(l=>`<span><i style="background:var(${l[0]})"></i>${l[1]}</span>`).join("")+(layers.sewer?`<span><i style="background:var(--card);border:2.5px solid var(--ink);border-radius:50%"></i>표시 밖인데 수위 80%↑</span>`:"");
+  const top=Object.entries(R).filter(([,d])=>d.flag).sort((a,b)=>b[1].n_top-a[1].n_top).slice(0,12);
+  const gu=n=>(TB.blend[cur.k].regions.find(d=>d.n===n)||{}).gu||"";
+  document.getElementById("riskList").innerHTML=top.length?top.map(([n,d])=>{const ev=D.sewer.filter(s=>s.drain===n&&(lastPct(s,n)??0)>=80).length;return `<li><span class="nm">${n}<small>${gu(n)} · 분구 필지의 ${(d.share*100).toFixed(1)}%${ev?` · 수위 80%↑ ${ev}곳`:''}</small></span><span class="pill ${d.share>=0.2?'p-sev':d.share>=0.05?'p-alert':'p-watch'}">${d.n_top}필지</span></li>`}).join(""):`<li><span class="nm">위험 표시 분구 없음<small>${rk.top_pct>0?"분구 필지의 5% 이상이 표시 대상인 분구가 없습니다":"3시간 최대 강우가 30 mm 미만입니다"}</small></span><span></span></li>`;
+  const b=TB.blend[cur.k];
+  document.getElementById("riskMeta").textContent=`강우 단계 ${rk.stage} (오늘 3시간 최대 ${rk.r3h_max_basin_mm.toFixed(0)} mm, 관측+${cur.iss}시 예보) → 위험 상위 ${rk.top_pct}% · ${rk.n_top_units.toLocaleString()}필지 · 위험 표시 분구 ${rk.n_flagged_regions}곳`;
+  let note=`위치는 모델 위험 순위, 범위는 강우 단계로 정합니다 (약함 30 mm 미만 0% · 관심 3% · 주의보급 6% · 경보급 15%), 분구는 필지의 5% 이상이 표시 대상이면 위험 표시 분구입니다. 관측 00–${cur.final?'24:00':tlab(cur.n)}시 ${b.obs_mm.toFixed(0)} mm, 예보 ${cur.final?'24:00':tlab(cur.n)}–24시 ${b.fc_mm.toFixed(1)} mm.`;
+  if(layers.sewer)note+=` 수위계 증거: 표시 분구 안 80%↑ ${both.length}곳, 표시 밖 80%↑ ${missed.length}곳${missed.length?` (${missed.map(shortName).slice(0,3).join(", ")})`:''}.`;
+  document.getElementById("riskNote").textContent=note;
+}
+
+let vSrc="final";
+function vt(k){return k==="final"?TB.observed:TB.blend[k].regions}
+function renderVerify(){
+  const tr=TB.traces.per_drain, area=r=>r.reduce((s,d)=>s+d.area_km2,0);
+  const fin=TB.observed_ranked.n_top_units, first=KS.find(k=>TB.blend[k].ranked.top_pct>0);
+  const fc03=D.ldaps["03"].slice(3).reduce((s,v)=>s+(v??0),0), obs=sum(D.hsp.rate,0,144)/6;
+  const big=Object.entries(tr).filter(([k,v])=>v.area_m2>=50000).map(([k])=>k);
+  const hit=k=>big.filter(n=>(rankedOf(k).regions[n]||{}).flag).length;
+  const S=[["하루 관측 강우","--blue",obs.toFixed(0),"mm","레이더 유역평균 00–24시"],
+           ["03시 예보 강우","--violet",fc03.toFixed(1),"mm",`실제의 ${(fc03/obs*100).toFixed(1)}% · 03–24시`],
+           ["위험 첫 표시","--orange",first?labK(first):"–","",first?`강우 단계 ${TB.blend[first].ranked.stage} · ${TB.blend[first].dir.split("_i")[1].slice(4)}시 예보`:""],
+           ["침수흔적","--red",TB.traces.area_km2.toFixed(2),"km²",`${TB.traces.n_poly.toLocaleString()}건 · 흔적 큰 분구 ${big.length}곳`]];
+  document.getElementById("vstats").innerHTML=S.map(s=>`<div class="stat"><div class="l"><i style="background:var(${s[1]})"></i>${s[0]}</div><div class="row"><div class="v">${s[2]}<small>${s[3]}</small></div></div><div class="s">${s[4]}</div></div>`).join("");
+  // lead chart: 시점별 위험 표시 분구 수와 그중 흔적 큰 분구 적중 수
+  { const W=380,H=240,L=34,R=10,T=26,B=34,iw=W-L-R,ih=H-T-B,ks=[...KS,"final"],nb=big.length;
+    const rows=ks.map(k=>{const R=rankedOf(k).regions;return {k,flag:Object.values(R).filter(d=>d.flag).length,hit:hit(k),rk:rankedOf(k)}});
+    const ym=Math.max(nb,...rows.map(r=>r.flag))+2,y=v=>T+ih-v/ym*ih,gw=iw/ks.length,bw=gw*.3;let g="";
+    for(let v=0;v<=ym;v+=Math.ceil(ym/4))g+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="${css('--line')}" ${v?'stroke-dasharray="3 5"':''}/><text x="${L-6}" y="${y(v)+4}" text-anchor="end">${v}</text>`;
+    g+=`<line x1="${L}" x2="${W-R}" y1="${y(nb)}" y2="${y(nb)}" stroke="${css('--red')}" stroke-dasharray="5 4"/><text x="${L+6}" y="${y(nb)-6}" style="fill:${css('--red')}">정답: 흔적 큰 분구 ${nb}곳</text>`;
+    rows.forEach((r,i)=>{const cx=L+gw*(i+.5),bar=(v,x,c)=>`<rect x="${x}" y="${y(v)}" width="${bw}" height="${Math.max(1.5,T+ih-y(v))}" rx="4" fill="${css(c)}"/><text x="${x+bw/2}" y="${y(v)-5}" text-anchor="middle" style="fill:${css('--ink')};font-weight:600">${v}</text>`;
+      g+=bar(r.flag,cx-bw-1,'--blue')+bar(r.hit,cx+1,'--orange');
+      g+=`<text x="${cx}" y="${H-16}" text-anchor="middle">${r.k==="final"?"종료 후":labK(r.k)}</text><text x="${cx}" y="${H-3}" text-anchor="middle" style="font-size:10px">${r.rk.stage}</text>`});
+    g+=`<text x="${L-6}" y="${T-10}" text-anchor="end">분구</text>`;
+    document.getElementById("vlead").innerHTML=g; }
+  // rain chart
+  { const W=380,H=230,L=40,R=10,T=16,B=30,iw=W-L-R,ih=H-T-B;const rows=["03","09","15","21"].map(k=>{const h=+k;return {k,fc:D.ldaps[k].slice(h).reduce((s,v)=>s+(v??0),0),ob:sum(D.hsp.rate,h*6,144)/6}});
+    const ym=Math.ceil(Math.max(...rows.map(r=>r.ob))*1.1/50)*50,y=v=>T+ih-v/ym*ih,bw=iw/4*.3;let g="";
+    for(let v=0;v<=ym;v+=ym/5)g+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="${css('--line')}" ${v?'stroke-dasharray="3 5"':''}/><text x="${L-6}" y="${y(v)+4}" text-anchor="end">${v.toFixed(0)}</text>`;
+    rows.forEach((r,i)=>{const cx=L+iw/4*(i+.5);g+=`<rect x="${cx-bw-2}" y="${y(r.ob)}" width="${bw}" height="${T+ih-y(r.ob)}" rx="5" fill="${css('--blue')}"/><rect x="${cx+2}" y="${y(r.fc)}" width="${bw}" height="${Math.max(1.5,T+ih-y(r.fc))}" rx="5" fill="${css('--violet')}"/><text x="${cx-bw/2-2}" y="${y(r.ob)-5}" text-anchor="middle" style="fill:${css('--ink')};font-weight:600">${r.ob.toFixed(0)}</text><text x="${cx+bw/2+2}" y="${y(r.fc)-5}" text-anchor="middle" style="fill:${css('--violet')};font-weight:600">${r.fc.toFixed(1)}</text><text x="${cx}" y="${H-12}" text-anchor="middle">${r.k}시 발표</text>`});
+    g+=`<text x="${L-6}" y="${T-4}" text-anchor="end">mm</text>`;
+    document.getElementById("vrain").innerHTML=g; }
+  // map
+  document.getElementById("vSrc").innerHTML=[["final","하루 종료 후"],...KS.map(k=>[k,`${labK(k)} 예측`])].map(b=>`<button data-v="${b[0]}" class="${vSrc===b[0]?'on':''}">${b[1]}</button>`).join("");
+  document.querySelectorAll("#vSrc button").forEach(b=>b.onclick=()=>{vSrc=b.dataset.v;renderVerify()});
+  const data=vt(vSrc),R=Object.fromEntries(data.map(d=>[d.n,d]));
+  const col=v=>v<0.2?css('--green'):v<0.5?css('--amber'):v<0.8?css('--orange'):css('--red');
+  const W=560,H=440,P=mapP(W,H);let g=`<defs><clipPath id="vc"><rect width="${W}" height="${H}" rx="14"/></clipPath></defs><g clip-path="url(#vc)"><rect width="${W}" height="${H}" fill="${css('--soft')}"/>`;
+  g+=terrainImg(P)+GEO.gu.map(f=>`<path d="${pathOf(P,f)}" fill="${css('--card')}" style="fill-opacity:var(--gu-wash)" stroke="${css('--ink')}" stroke-opacity=".28" stroke-width="1.2"/>`).join("");
+  const RK=rankedOf(vSrc).regions;
+  g+=GEO.drain.map(f=>{const d=RK[f.n];if(!d)return `<path d="${pathOf(P,f)}" fill="none" stroke="${css('--line')}" stroke-width=".6"/>`;
+    return d.flag?`<path d="${pathOf(P,f)}" fill="${shareCol(d.share)}" fill-opacity="${0.3+Math.min(d.share,0.5)}" stroke="${css('--card')}" stroke-width="1"><title>${f.n} 표시 ${d.n_top}필지</title></path>`:`<path d="${pathOf(P,f)}" fill="${css('--green')}" fill-opacity=".12" stroke="${css('--card')}" stroke-width="1"/>`}).join("");
+  g+=`<path d="${GEO.river.map(f=>pathOf(P,f)).join("")}" fill="${css('--sky')}" opacity=".5"/>`;
+  const p0=P([126.9,37.5]),p1=P([126.9+0.00113,37.5+0.0009]),cw=Math.abs(p1[0]-p0[0]),ch=Math.abs(p1[1]-p0[1]);
+  g+=`<g fill="${css('--ink')}" opacity=".78">`+TB.traces.cells.map(c=>{const p=P(c);return `<rect x="${(p[0]-cw/2).toFixed(1)}" y="${(p[1]-ch/2).toFixed(1)}" width="${cw.toFixed(1)}" height="${ch.toFixed(1)}"/>`}).join("")+`</g>`;
+  g+=`<path d="${GEO.basin.map(f=>pathOf(P,f)).join("")}" fill="none" stroke="${css('--blue')}" stroke-width="1.6" stroke-dasharray="5 4"/>`+guLabels(P,W,H)+`</g>`;
+  document.getElementById("vmap").innerHTML=g;
+  document.getElementById("vLegend").innerHTML=`<span>위험 표시 분구</span>`+[["--orange","5–20%"],["--red","20% 이상"],["--ink","침수흔적 (100 m 칸)"]].map(l=>`<span><i style="background:var(${l[0]})"></i>${l[1]}</span>`).join("");
+  document.getElementById("vmapMeta").textContent=vSrc==="final"?`하루 관측 강우로 계산한 위험 (${TB.observed_ranked.stage} ${TB.observed_ranked.top_pct}%) + 침수흔적도`:`${labK(vSrc)} 시점 예측 (관측+${TB.blend[vSrc].dir.split("_i")[1].slice(4)}시 예보, ${TB.blend[vSrc].ranked.stage} ${TB.blend[vSrc].ranked.top_pct}%) + 침수흔적도`;
+  const h=hit(vSrc),fa=Object.entries(rankedOf(vSrc).regions).filter(([n,d])=>d.flag&&!(tr[n]&&tr[n].area_m2>=50000)).length;
+  { const nb=big.length,pct=v=>Math.round(v/Math.max(1,nb)*100),ks=[...KS,"final"],lbl=k=>k==="final"?"하루 종료 후":labK(k);
+    const miss=big.filter(n=>!(rankedOf(vSrc).regions[n]||{}).flag);
+    document.getElementById("vScore").innerHTML=`<div class="vs-k"><div class="hit"><span>적중</span><b>${h}<small> / ${nb}</small></b><em>흔적 큰 분구 중 위험 표시</em></div>`+
+      `<div class="fa"><span>헛경보 쪽</span><b>${fa}<small>곳</small></b><em>위험 표시인데 흔적 작음</em></div></div>`+
+      `<div class="vs-h">시점별 적중 <small>${lbl(vSrc)} 선택 중</small></div>`+
+      ks.map(k=>{const v=hit(k);return `<div class="vs-r${k===vSrc?" on":""}"><span>${lbl(k)}</span><i><u style="width:${pct(v)}%"></u></i><b>${v}/${nb}</b><em>${rankedOf(k).stage}</em></div>`}).join("")+
+      (miss.length?`<div class="vs-m"><span>놓친 분구</span>${miss.map(n=>`<b>${n}</b>`).join("")}</div>`:"")+
+      `<div class="vs-n">흔적 큰 분구 = 침수흔적 면적 5만 m² 이상 (정답)<br>위험 표시 분구 = 강우 단계별 위험 상위 % 필지가 분구의 5% 이상 (예측)</div>`; }
+  // table
+  const names=[...new Set([...Object.keys(tr),...TB.observed.map(d=>d.n)])].filter(n=>TB.observed.find(d=>d.n===n));
+  names.sort((a,b)=>(tr[b]?.area_m2||0)-(tr[a]?.area_m2||0));
+  const cell=v=>{const c=v>=0.8?"p-sev":v>=0.5?"p-alert":v>=0.2?"p-watch":"p-low";return `<td><span class="pill ${c}">${v.toFixed(2)}</span></td>`};
+  document.getElementById("vtable").innerHTML=`<thead><tr><th>배수분구</th><th>구</th><th class="n">흔적 면적</th><th class="n">흔적 건수</th>${KS.map(k=>`<th>${k}시 예측</th>`).join("")}<th>하루 종료 후</th><th>판정</th></tr></thead><tbody>`+
+    names.slice(0,14).map(n=>{const o=TB.observed.find(d=>d.n===n),t=tr[n]||{area_m2:0,n:0},bigT=t.area_m2>=50000,firstK=KS.find(k=>(rankedOf(k).regions[n]||{}).flag);
+      const verdict=bigT?(firstK?`<span class="pill p-low">${firstK}시부터 잡음</span>`:`<span class="pill p-sev">놓침</span>`):(firstK?`<span class="pill p-watch">흔적 적음</span>`:"–");
+      return `<tr><td>${n}</td><td class="sub">${o.gu}</td><td class="n">${(t.area_m2/1e4).toFixed(1)} ha</td><td class="n">${t.n.toLocaleString()}</td>${KS.map(k=>cell(vt(k).find(d=>d.n===n)?.mean||0)).join("")}${cell(o.mean)}<td>${verdict}</td></tr>`}).join("")+`</tbody>`;
+}
+
+let RB=null;
+function rcolor(v){if(v<1)return null;const st=[[1,'--sky',.55],[5,'--sky',.85],[10,'--blue',.55],[20,'--blue',.85],[30,'--violet',.85],[50,'--orange',.9],[80,'--red',.9]];let c=st[0];for(const s of st)if(v>=s[0])c=s;return c}
+function renderRadar(n){
+  if(!RB){const bin=atob(TB.radar.b64);RB=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)RB[i]=bin.charCodeAt(i)}
+  document.querySelector(".rticks").innerHTML=[0,3,6,9,12,15,18,21,24].map(h=>`<span style="left:${h/24*100}%;${h*6>n?'opacity:.35':''}">${pad(h)}시</span>`).join("");
+  const sl=document.getElementById("rslider");sl.max=143;if(rIdx==null||rIdx>n-1)rIdx=Math.max(0,n-1);sl.value=rIdx;
+  sl.oninput=()=>{rIdx=Math.min(+sl.value,n-1);sl.value=rIdx;stopPlay();drawRadar(n)};
+  document.getElementById("play").onclick=()=>{if(rTimer){stopPlay();return}if(rIdx>=n-1)rIdx=0;document.getElementById("play").textContent="정지";rTimer=setInterval(()=>{rIdx++;if(rIdx>n-1){stopPlay();rIdx=n-1}sl.value=rIdx;drawRadar(n)},matchMedia("(prefers-reduced-motion: reduce)").matches?400:80)};
+  document.getElementById("rLegend").innerHTML=[[1,'--sky',.55],[10,'--blue',.55],[30,'--violet',.85],[50,'--orange',.9],[80,'--red',.9]].map(s=>`<span><i style="background:var(${s[1]});opacity:${s[2]}"></i>${s[0]}+</span>`).join("")+`<span>mm/h</span>`;
+  drawRadar(n);
+}
+function stopPlay(){if(rTimer){clearInterval(rTimer);rTimer=null}const b=document.getElementById("play");if(b)b.textContent="재생"}
+function drawRadar(n){
+  const W=560,H=440,P=mapP(W,H),ny=TB.radar.ny,nx=TB.radar.nx,lon=TB.radar.lon,lat=TB.radar.lat,off=rIdx*ny*nx;
+  let g=`<defs><clipPath id="rdc"><rect width="${W}" height="${H}" rx="14"/></clipPath></defs><g clip-path="url(#rdc)"><rect width="${W}" height="${H}" fill="${css('--soft')}"/>`;
+  g+=terrainImg(P)+GEO.gu.map(f=>`<path d="${pathOf(P,f)}" fill="${css('--card')}" style="fill-opacity:var(--gu-wash)" stroke="${css('--ink')}" stroke-opacity=".28" stroke-width="1.2"/>`).join("");
+  let mx=0;const C=(j,i)=>P([lon[j*(nx+1)+i],lat[j*(nx+1)+i]]);
+  for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){const v=RB[off+j*nx+i];mx=Math.max(mx,v);const c=rcolor(v);if(!c)continue;
+    const a=C(j,i),b=C(j,i+1),d=C(j+1,i+1),e=C(j+1,i);g+=`<path d="M${a}L${b}L${d}L${e}Z" fill="${css(c[1])}" fill-opacity="${c[2]}"/>`}
+  g+=`<path d="${GEO.river.map(f=>pathOf(P,f)).join("")}" fill="none" stroke="${css('--blue')}" stroke-opacity=".5" stroke-width="1"/>`;
+  g+=`<path d="${GEO.gu.map(f=>pathOf(P,f)).join("")}" fill="none" stroke="${css('--ink')}" stroke-opacity=".25" stroke-width="1"/>`;
+  g+=`<path d="${GEO.basin.map(f=>pathOf(P,f)).join("")}" fill="none" stroke="${css('--ink')}" stroke-width="1.8" stroke-dasharray="5 4"/>`;
+  g+=guLabels(P,W,H)+`</g>`;
+  document.getElementById("radarmap").innerHTML=g;
+  document.getElementById("rtime").innerHTML=`${tlab(rIdx)}<small>KST</small>`;
+  document.getElementById("rMean").textContent=D.hsp.rate[rIdx].toFixed(1)+" mm/h";
+  document.getElementById("rMax").textContent=mx+" mm/h";
+  const sp=document.getElementById("rspark"),PL=26,PR=6,PT=14,PB=20,PW=300-PL-PR,PH=110-PT-PB,ym=Math.max(20,Math.ceil(Math.max(...D.hsp.rate.slice(0,n))/20)*20),
+    x=i=>PL+i/144*PW,y=v=>PT+PH-Math.min(v,ym)/ym*PH;
+  let sg=`<rect x="${x(n)}" y="${PT}" width="${x(144)-x(n)}" height="${PH}" fill="${css('--soft')}"/>`;
+  [0,ym/2,ym].forEach(v=>sg+=`<line x1="${PL}" x2="${300-PR}" y1="${y(v)}" y2="${y(v)}" stroke="${css('--line')}" ${v?'stroke-dasharray="2 4"':''}/><text x="${PL-4}" y="${y(v)+3}" text-anchor="end" style="font-size:9.5px">${v}</text>`);
+  sg+=`<path d="M${x(.5)},${y(0)}`+D.hsp.rate.slice(0,n).map((v,i)=>`L${x(i+.5).toFixed(1)},${y(v).toFixed(1)}`).join("")+`L${x(n-.5)},${y(0)}Z" fill="${css('--blue')}" fill-opacity=".14" stroke="${css('--blue')}" stroke-width="1" stroke-linejoin="round"/>`;
+  const mk=x(rIdx+.5);sg+=`<line x1="${mk}" x2="${mk}" y1="${PT-2}" y2="${PT+PH}" stroke="${css('--orange')}" stroke-width="1.2"/><circle cx="${mk}" cy="${y(D.hsp.rate[rIdx])}" r="2.6" fill="${css('--orange')}"/>`;
+  sg+=`<text x="${Math.min(300-PR-18,Math.max(PL+18,mk))}" y="${PT-4}" text-anchor="middle" style="font-size:10px;font-weight:600;fill:${css('--orange')}">${tlab(rIdx)}</text>`;
+  [0,6,12,18,24].forEach(h=>sg+=`<text x="${x(h*6)}" y="${110-5}" text-anchor="${h===0?'start':h===24?'end':'middle'}" style="font-size:10px">${pad(h)}시</text>`);
+  sp.innerHTML=sg;
+}
+
+render();
+window.addEventListener("resize",()=>{clearTimeout(window._rz);window._rz=setTimeout(render,200)});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change",render);
+new MutationObserver(render).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+</script>
